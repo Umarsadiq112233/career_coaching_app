@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "123482540296",
+    "project_id": "career-caoching",
+    "storage_bucket": "career-caoching.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:123482540296:android:af27fa1b17454cd1fe84bd",
+        "android_client_info": {
+          "package_name": "com.example.career_coaching"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBN8fEUfl7tTFvE3yyQ8YHveR7i0faaLPg"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
