@@ -504,6 +504,7 @@ class CoachDashboardScreen extends StatelessWidget {
                 builder:
                     (_) => CoachChatScreen(
                       chatId: 'sampleChatId',
+                      learnerId: 'sampleLearnerId',
                       learnerName: 'Sample Learner',
                     ),
               ),

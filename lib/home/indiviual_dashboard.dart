@@ -64,7 +64,9 @@ class _IndiviualDashboardState extends State<IndiviualDashboard> {
                   builder:
                       (context) => IndividualChatScreen(
                         chatId: 'exampleChatId',
+                        otherUserId: 'exampleUserId',
                         otherUserName: 'exampleUserName',
+                        isCoach: false,
                       ),
                 ),
               );
