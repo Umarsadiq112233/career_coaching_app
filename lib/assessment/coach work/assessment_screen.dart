@@ -1,3 +1,5 @@
+import 'package:career_coaching/assessment/coach%20work/create_new_quiz.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 
 class AssessmentScreen extends StatefulWidget {
@@ -13,38 +15,45 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
   final searchController = TextEditingController();
   bool showSearch = false;
 
-  final assessments = [
-    {
-      'title': 'Leadership Assessment',
-      'desc': 'Evaluate your leadership skills.',
-      'status': 'Completed',
-      'progress': 1.0,
-    },
-    {
-      'title': 'Communication Skills',
-      'desc': 'Improve verbal and written skills.',
-      'status': 'In Progress',
-      'progress': 0.6,
-    },
-    {
-      'title': 'Problem Solving',
-      'desc': 'Test your problem-solving ability.',
-      'status': 'New',
-      'progress': 0.0,
-    },
-  ];
+  List<Map<String, dynamic>> assessments = [];
+  bool isLoading = true;
 
   @override
+  void initState() {
+    super.initState();
+    loadAssessments();
+  }
+
+  Future<void> loadAssessments() async {
+    final snapshot =
+        await FirebaseFirestore.instance.collection('quizzes').get();
+
+    setState(() {
+      assessments =
+          snapshot.docs.map((doc) {
+            final data = doc.data();
+            return {
+              'id': doc.id,
+              'title': data['title'] ?? '',
+              'desc': data['description'] ?? '',
+              'status': data['status'] ?? 'New', // Default if not set
+              'progress': data['progress'] ?? 0.0,
+            };
+          }).toList();
+      isLoading = false;
+    });
+  }
+
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Color.fromARGB(255, 255, 193, 7),
+        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
         title:
             showSearch
                 ? TextField(
                   controller: searchController,
                   autofocus: true,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     hintText: 'Search...',
                     border: InputBorder.none,
                   ),
@@ -67,18 +76,31 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
         children: [
           buildFilters(),
           Expanded(
-            child: ListView(
-              padding: const EdgeInsets.all(16),
-              children:
-                  getFilteredAssessments().map((a) => buildCard(a)).toList(),
-            ),
+            child:
+                isLoading
+                    ? const Center(child: CircularProgressIndicator())
+                    : ListView(
+                      padding: const EdgeInsets.all(16),
+                      children:
+                          getFilteredAssessments()
+                              .map((a) => buildCard(a))
+                              .toList(),
+                    ),
           ),
         ],
       ),
       floatingActionButton: FloatingActionButton(
-        backgroundColor: Color.fromARGB(255, 255, 193, 7),
-        onPressed: () {
-          // Add assessment action
+        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
+        onPressed: () async {
+          final result = await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const CreateQuizScreen()),
+          );
+          if (result != null && result is Map<String, dynamic>) {
+            setState(() {
+              assessments.add(result);
+            });
+          }
         },
         child: const Icon(Icons.add),
       ),
@@ -100,11 +122,12 @@ class _AssessmentScreenState extends State<AssessmentScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               decoration: BoxDecoration(
                 color: selected ? Colors.blue : Colors.transparent,
-
                 borderRadius: BorderRadius.circular(20),
                 border: Border.all(
                   color:
-                      selected ? Colors.blue : Color.fromARGB(255, 255, 193, 7),
+                      selected
+                          ? Colors.blue
+                          : const Color.fromARGB(255, 255, 193, 7),
                 ),
               ),
               child: Center(

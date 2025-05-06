@@ -1,5 +1,6 @@
 // ignore_for_file: sort_child_properties_last
 
+import 'package:career_coaching/auth/forgot_screen.dart';
 import 'package:career_coaching/auth/signup_screen.dart';
 import 'package:career_coaching/main.dart';
 import 'package:firebase_auth/firebase_auth.dart';
@@ -171,6 +172,11 @@ class _LoginScreenState extends State<LoginScreen> {
                 GestureDetector(
                   onTap: () {
                     // Add forgot password functionality
+
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(builder: (context) => ForgotScreen()),
+                    );
                   },
                   child: const Text(
                     "Forgot Password?",

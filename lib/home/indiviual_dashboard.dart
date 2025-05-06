@@ -1,5 +1,6 @@
 // ignore_for_file: deprecated_member_use
 
+import 'package:career_coaching/assessment/indiviual%20work/learner_quiz_screen.dart';
 import 'package:career_coaching/message/individual_chat_screen.dart';
 import 'package:career_coaching/profile/individual_profile_look.dart';
 import 'package:flutter/material.dart';
@@ -54,6 +55,12 @@ class _IndiviualDashboardState extends State<IndiviualDashboard> {
               break;
             case 2:
               // Navigate to Assessment
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const LearnerQuizListScreen(),
+                ),
+              );
               break;
             case 3:
               // Navigate to chat
