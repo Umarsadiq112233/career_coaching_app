@@ -1,7 +1,7 @@
 import 'package:career_coaching/assessment/coach%20work/assessment_screen.dart';
 import 'package:career_coaching/message/coach_chat_message.dart';
 import 'package:career_coaching/profile/coach_profile_look.dart';
-import 'package:career_coaching/session/calender_screen.dart';
+import 'package:career_coaching/session/session_screen.dart';
 import 'package:career_coaching/session/view_all_session.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
@@ -21,7 +21,7 @@ class CoachDashboardScreen extends StatelessWidget {
 
   AppBar _buildAppBar() {
     return AppBar(
-      leading: const CircleAvatar(child: Icon(Icons.person)),
+      leading: const Icon(Icons.person),
       title: const Text('Coach Dashboard'),
       centerTitle: true,
       backgroundColor: const Color.fromARGB(255, 255, 193, 7),
@@ -222,8 +222,7 @@ class CoachDashboardScreen extends StatelessWidget {
                           Navigator.push(
                             context,
                             MaterialPageRoute(
-                              builder:
-                                  (context) => SheduleSetForUpcommingSession(),
+                              builder: (context) => SessionScreen(),
                             ),
                           );
                         },
@@ -293,9 +292,7 @@ class CoachDashboardScreen extends StatelessWidget {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder:
-                                    (context) =>
-                                        SheduleSetForUpcommingSession(),
+                                builder: (context) => SessionScreen(),
                               ),
                             );
                           },
@@ -485,9 +482,7 @@ class CoachDashboardScreen extends StatelessWidget {
           case 2:
             Navigator.push(
               context,
-              MaterialPageRoute(
-                builder: (_) => SheduleSetForUpcommingSession(),
-              ),
+              MaterialPageRoute(builder: (_) => SessionScreen()),
             );
             break;
 
@@ -520,7 +515,7 @@ class CoachDashboardScreen extends StatelessWidget {
         ),
         BottomNavigationBarItem(
           icon: Icon(Icons.calendar_today),
-          label: 'Calendar',
+          label: 'Sessions',
         ),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),

@@ -2,16 +2,14 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:intl/intl.dart';
 
-class SheduleSetForUpcommingSession extends StatefulWidget {
-  const SheduleSetForUpcommingSession({super.key});
+class SessionScreen extends StatefulWidget {
+  const SessionScreen({super.key});
 
   @override
-  State<SheduleSetForUpcommingSession> createState() =>
-      _SheduleSetForUpcommingSessionState();
+  State<SessionScreen> createState() => _SheduleSetForUpcommingSessionState();
 }
 
-class _SheduleSetForUpcommingSessionState
-    extends State<SheduleSetForUpcommingSession> {
+class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
   final _formKey = GlobalKey<FormState>();
   final TextEditingController _titleController = TextEditingController();
   final TextEditingController _descriptionController = TextEditingController();
@@ -80,7 +78,7 @@ class _SheduleSetForUpcommingSessionState
         title: const Text('Add New Activity'),
         centerTitle: true,
         backgroundColor: Color.fromARGB(255, 255, 193, 7),
-        foregroundColor: Colors.white,
+        foregroundColor: Colors.black,
         elevation: 4,
       ),
       body: SingleChildScrollView(

@@ -56,7 +56,7 @@ class _LoginScreenState extends State<LoginScreen> {
           // Navigate to home screen or user role screen
           Navigator.pushReplacement(
             context,
-            MaterialPageRoute(builder: (_) => const SplashWrapper()),
+            MaterialPageRoute(builder: (_) => SplashWrapper()),
           );
         }
       } on FirebaseAuthException catch (e) {
