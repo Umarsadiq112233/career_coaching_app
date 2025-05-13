@@ -1,7 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// Updated CoachChatScreen using Supabase instead of Firebase
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CoachChatScreen extends StatefulWidget {
   final String chatId;
@@ -21,8 +21,7 @@ class CoachChatScreen extends StatefulWidget {
 
 class _CoachChatScreenState extends State<CoachChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   final ScrollController _scrollController = ScrollController();
   bool _isSending = false;
 
@@ -32,56 +31,49 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     _markMessagesAsRead();
   }
 
-  void _markMessagesAsRead() async {
-    await _firestore
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .where('senderId', isEqualTo: widget.learnerId)
-        .where('read', isEqualTo: false)
-        .get()
-        .then((snapshot) {
-          final batch = _firestore.batch();
-          for (final doc in snapshot.docs) {
-            batch.update(doc.reference, {'read': true});
-          }
-          return batch.commit();
-        });
+  Future<void> _markMessagesAsRead() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+
+    final response = await _supabase
+        .from('messages')
+        .select('id')
+        .eq('chat_id', widget.chatId)
+        .eq('sender_id', widget.learnerId)
+        .eq('read', false);
+
+    for (var msg in response) {
+      await _supabase.from('messages').update({'read': true}).eq('id', msg['id']);
+    }
   }
 
   Future<void> sendMessage() async {
-    if (_messageController.text.trim().isEmpty) return;
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null || _messageController.text.trim().isEmpty) return;
 
     setState(() => _isSending = true);
-    final String currentUserId = _auth.currentUser!.uid;
-    final String text = _messageController.text.trim();
+    final text = _messageController.text.trim();
 
     try {
-      // Add message to messages subcollection
-      await _firestore
-          .collection('chats')
-          .doc(widget.chatId)
-          .collection('messages')
-          .add({
-            'senderId': currentUserId,
-            'text': text,
-            'timestamp': FieldValue.serverTimestamp(),
-            'type': 'text',
-            'read': false,
-          });
-
-      // Update chat metadata
-      await _firestore.collection('chats').doc(widget.chatId).update({
-        'lastMessage': text,
-        'lastUpdated': FieldValue.serverTimestamp(),
+      await _supabase.from('messages').insert({
+        'chat_id': widget.chatId,
+        'sender_id': userId,
+        'text': text,
+        'timestamp': DateTime.now().toIso8601String(),
+        'type': 'text',
+        'read': false,
       });
+
+      await _supabase.from('chats').update({
+        'last_message': text,
+        'last_updated': DateTime.now().toIso8601String(),
+      }).eq('id', widget.chatId);
 
       _messageController.clear();
       _scrollToBottom();
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Failed to send: $e')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('Failed to send: $e')));
     } finally {
       setState(() => _isSending = false);
     }
@@ -99,14 +91,11 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
     });
   }
 
-  Widget _buildMessageBubble(DocumentSnapshot message) {
-    final data = message.data() as Map<String, dynamic>;
-    final isMe = data['senderId'] == _auth.currentUser!.uid;
-    final timestamp = data['timestamp'] as Timestamp?;
-    final timeString =
-        timestamp != null
-            ? DateFormat('h:mm a').format(timestamp.toDate())
-            : '';
+  Widget _buildMessageBubble(Map<String, dynamic> data) {
+    final userId = _supabase.auth.currentUser?.id;
+    final isMe = data['sender_id'] == userId;
+    final time = DateTime.tryParse(data['timestamp'] ?? '') ?? DateTime.now();
+    final timeString = DateFormat('h:mm a').format(time);
 
     return Align(
       alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
@@ -118,10 +107,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
           margin: const EdgeInsets.symmetric(vertical: 4, horizontal: 8),
           padding: const EdgeInsets.all(12),
           decoration: BoxDecoration(
-            color:
-                isMe
-                    ? const Color.fromARGB(255, 255, 193, 7)
-                    : Colors.grey[200],
+            color: isMe ? const Color.fromARGB(255, 255, 193, 7) : Colors.grey[200],
             borderRadius: BorderRadius.only(
               topLeft: const Radius.circular(12),
               topRight: const Radius.circular(12),
@@ -133,7 +119,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                data['text'],
+                data['text'] ?? '',
                 style: TextStyle(color: isMe ? Colors.black : Colors.black87),
               ),
               const SizedBox(height: 4),
@@ -155,55 +141,32 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(widget.learnerName),
-            StreamBuilder<DocumentSnapshot>(
-              stream:
-                  _firestore
-                      .collection('users')
-                      .doc(widget.learnerId)
-                      .snapshots(),
-              builder: (context, snapshot) {
-                final status = snapshot.data?['status'] ?? 'offline';
-                return Text(
-                  status == 'online' ? 'Online' : 'Offline',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                    color: status == 'online' ? Colors.green : Colors.grey,
-                  ),
-                );
-              },
-            ),
-          ],
-        ),
+        title: Text(widget.learnerName),
+        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
         actions: [
           IconButton(
             icon: const Icon(Icons.video_call),
-            onPressed: () {
-              // Implement video call functionality
-            },
+            onPressed: () {},
           ),
         ],
-        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
       ),
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream:
-                  _firestore
-                      .collection('chats')
-                      .doc(widget.chatId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: false)
-                      .snapshots(),
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _supabase
+                  .from('messages')
+                  .stream(primaryKey: ['id'])
+                  .eq('chat_id', widget.chatId)
+                  .order('timestamp', ascending: true),
               builder: (context, snapshot) {
+                final data = snapshot.data;
+
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
+                if (data == null || data.isEmpty) {
                   return const Center(
                     child: Text('Start your conversation with the learner'),
                   );
@@ -216,9 +179,9 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
                 return ListView.builder(
                   controller: _scrollController,
                   padding: const EdgeInsets.all(8),
-                  itemCount: snapshot.data!.docs.length,
+                  itemCount: data.length,
                   itemBuilder: (context, index) {
-                    return _buildMessageBubble(snapshot.data!.docs[index]);
+                    return _buildMessageBubble(data[index]);
                   },
                 );
               },
@@ -231,9 +194,7 @@ class _CoachChatScreenState extends State<CoachChatScreen> {
               children: [
                 IconButton(
                   icon: const Icon(Icons.attach_file),
-                  onPressed: () {
-                    // Implement file attachment
-                  },
+                  onPressed: () {},
                 ),
                 Expanded(
                   child: TextField(

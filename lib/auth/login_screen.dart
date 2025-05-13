@@ -1,11 +1,11 @@
-// ignore_for_file: sort_child_properties_last
+// ignore_for_file: sort_child_properties_last, avoid_print
 
 import 'package:career_coaching/auth/forgot_screen.dart';
 import 'package:career_coaching/auth/signup_screen.dart';
 import 'package:career_coaching/main.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/svg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -32,71 +32,33 @@ class _LoginScreenState extends State<LoginScreen> {
       setState(() => _isLoading = true);
 
       try {
-        // Firebase authentication login
-        UserCredential userCredential = await FirebaseAuth.instance
-            .signInWithEmailAndPassword(
-              email: _emailController.text.trim(),
-              password: _passwordController.text.trim(),
-            );
+        final response = await Supabase.instance.client.auth
+            .signInWithPassword(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
 
-        // Check if login was successful and user exists
-        if (userCredential.user != null) {
-          // Check if email is verified (optional)
-          if (!userCredential.user!.emailVerified) {
-            // You might want to prompt the user to verify their email
-            if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Please verify your email address'),
-                ),
-              );
-            }
-          }
-
-          // Navigate to home screen or user role screen
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(builder: (_) => SplashWrapper()),
-          );
-        }
-      } on FirebaseAuthException catch (e) {
-        // Handle specific authentication errors
-        String errorMessage;
-        switch (e.code) {
-          case 'user-not-found':
-            errorMessage = 'No user found with this email.';
-            break;
-          case 'wrong-password':
-            errorMessage = 'Incorrect password.';
-            break;
-          case 'invalid-email':
-            errorMessage = 'Invalid email format.';
-            break;
-          case 'user-disabled':
-            errorMessage = 'This account has been disabled.';
-            break;
-          case 'too-many-requests':
-            errorMessage = 'Too many attempts. Try again later.';
-            break;
-          default:
-            errorMessage = 'Login failed. Please try again.';
+        if (response.user == null) {
+          throw Exception("Login failed");
         }
 
-        if (mounted) {
-          ScaffoldMessenger.of(
-            context,
-          ).showSnackBar(SnackBar(content: Text(errorMessage)));
-        }
+        if (!mounted) return;
+
+        // Navigate to the main app
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const SplashWrapper()),
+        );
+      } on AuthException catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text(e.message)),
+        );
       } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('An unexpected error occurred')),
-          );
-        }
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An unexpected error occurred')),
+        );
       } finally {
-        if (mounted) {
-          setState(() => _isLoading = false);
-        }
+        if (mounted) setState(() => _isLoading = false);
       }
     }
   }
@@ -128,7 +90,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: const InputDecoration(
                     labelText: "Email",
                     border: OutlineInputBorder(),
-                    enabledBorder: const OutlineInputBorder(
+                    enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(
                         color: Color.fromARGB(255, 255, 193, 7),
                       ),
@@ -138,9 +100,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please enter your email';
-                    } else if (!RegExp(
-                      r'^[^@]+@[^@]+\.[^@]+',
-                    ).hasMatch(value)) {
+                    } else if (!RegExp(r'^[^@]+@[^@]+\.[^@]+')
+                        .hasMatch(value)) {
                       return 'Please enter a valid email address';
                     }
                     return null;
@@ -152,7 +113,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   decoration: const InputDecoration(
                     labelText: "Password",
                     border: OutlineInputBorder(),
-                    enabledBorder: const OutlineInputBorder(
+                    enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(
                         color: Color.fromARGB(255, 255, 193, 7),
                       ),
@@ -171,11 +132,10 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 GestureDetector(
                   onTap: () {
-                    // Add forgot password functionality
-
                     Navigator.push(
                       context,
-                      MaterialPageRoute(builder: (context) => ForgotScreen()),
+                      MaterialPageRoute(
+                          builder: (context) => ForgotScreen()),
                     );
                   },
                   child: const Text(
@@ -193,8 +153,7 @@ class _LoginScreenState extends State<LoginScreen> {
                         Navigator.push(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const Sigupscreen(),
-                          ),
+                              builder: (context) => const Sigupscreen()),
                         );
                       },
                       child: const Text(
@@ -219,7 +178,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     GestureDetector(
                       onTap: () {
                         print("Google login clicked");
-                        // Add Google sign-in functionality
                       },
                       child: SvgPicture.asset(
                         'assets/icons/google.svg',
@@ -231,7 +189,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     GestureDetector(
                       onTap: () {
                         print("Facebook login clicked");
-                        // Add Facebook sign-in functionality
                       },
                       child: SvgPicture.asset(
                         'assets/icons/facebook.svg',
@@ -243,7 +200,6 @@ class _LoginScreenState extends State<LoginScreen> {
                     GestureDetector(
                       onTap: () {
                         print("LinkedIn login clicked");
-                        // Add LinkedIn sign-in functionality
                       },
                       child: SvgPicture.asset(
                         'assets/icons/linkdin.svg',
@@ -256,24 +212,23 @@ class _LoginScreenState extends State<LoginScreen> {
                 const SizedBox(height: 20),
                 ElevatedButton(
                   onPressed: _isLoading ? null : _submitForm,
-                  child:
-                      _isLoading
-                          ? const SizedBox(
-                            width: 20,
-                            height: 20,
-                            child: CircularProgressIndicator(
-                              color: Colors.black,
-                              strokeWidth: 2,
-                            ),
-                          )
-                          : const Text(
-                            'Login',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.black,
-                            ),
+                  child: _isLoading
+                      ? const SizedBox(
+                          width: 20,
+                          height: 20,
+                          child: CircularProgressIndicator(
+                            color: Colors.black,
+                            strokeWidth: 2,
                           ),
+                        )
+                      : const Text(
+                          'Login',
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.bold,
+                            color: Colors.black,
+                          ),
+                        ),
                   style: ElevatedButton.styleFrom(
                     minimumSize: const Size(double.infinity, 50),
                     backgroundColor: const Color.fromARGB(255, 255, 193, 7),

@@ -1,17 +1,15 @@
+// Updated IndividualProfileScreen using Supabase
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class IndividualProfileScreen extends StatefulWidget {
   const IndividualProfileScreen({super.key});
 
   @override
-  State<IndividualProfileScreen> createState() =>
-      _IndividualProfileScreenState();
+  State<IndividualProfileScreen> createState() => _IndividualProfileScreenState();
 }
 
 class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
-  final User? user = FirebaseAuth.instance.currentUser;
   final _formKey = GlobalKey<FormState>();
   late TextEditingController _nameController;
   late TextEditingController _emailController;
@@ -30,9 +28,12 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
     'Executive',
   ];
 
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   @override
   void initState() {
     super.initState();
+    final user = _supabase.auth.currentUser;
     _nameController = TextEditingController();
     _emailController = TextEditingController(text: user?.email);
     _phoneController = TextEditingController();
@@ -43,60 +44,47 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
   }
 
   Future<void> _loadProfileData() async {
+    final user = _supabase.auth.currentUser;
     if (user == null) return;
 
-    final doc =
-        await FirebaseFirestore.instance
-            .collection('users')
-            .doc(user!.uid)
-            .get();
-
-    if (doc.exists) {
-      final data = doc.data()!;
-      setState(() {
-        _nameController.text = data['name'] ?? '';
-        _phoneController.text = data['phone'] ?? '';
-        _bioController.text = data['bio'] ?? '';
-        _skillsController.text = data['skills']?.join(', ') ?? '';
-        _goalsController.text = data['goals']?.join(', ') ?? '';
-        _selectedCareerLevel = data['careerLevel'];
-      });
-    }
+    final response = await _supabase.from('users').select().eq('id', user.id).single();
+    setState(() {
+      _nameController.text = response['name'] ?? '';
+      _phoneController.text = response['phone'] ?? '';
+      _bioController.text = response['bio'] ?? '';
+      _skillsController.text = (response['skills'] as List?)?.join(', ') ?? '';
+      _goalsController.text = (response['goals'] as List?)?.join(', ') ?? '';
+      _selectedCareerLevel = response['careerLevel'];
+    });
   }
 
   Future<void> _saveProfile() async {
+    final user = _supabase.auth.currentUser;
     if (!_formKey.currentState!.validate() || user == null) return;
 
-    final skillsList =
-        _skillsController.text
-            .split(',')
-            .map((skill) => skill.trim())
-            .where((skill) => skill.isNotEmpty)
-            .toList();
+    setState(() => _isLoading = true);
 
-    final goalsList =
-        _goalsController.text
-            .split(',')
-            .map((goal) => goal.trim())
-            .where((goal) => goal.isNotEmpty)
-            .toList();
+    final skillsList = _skillsController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+    final goalsList = _goalsController.text.split(',').map((g) => g.trim()).where((g) => g.isNotEmpty).toList();
 
-    await FirebaseFirestore.instance.collection('users').doc(user!.uid).set({
-      'name': _nameController.text,
-      'email': _emailController.text,
-      'phone': _phoneController.text,
-      'bio': _bioController.text,
+    await _supabase.from('users').upsert({
+      'id': user.id,
+      'name': _nameController.text.trim(),
+      'email': _emailController.text.trim(),
+      'phone': _phoneController.text.trim(),
+      'bio': _bioController.text.trim(),
       'skills': skillsList,
       'goals': goalsList,
       'careerLevel': _selectedCareerLevel,
-      'lastUpdated': FieldValue.serverTimestamp(),
       'userType': 'individual',
-    }, SetOptions(merge: true));
+      'lastUpdated': DateTime.now().toIso8601String(),
+    });
 
-    Navigator.pop(context); // Return to previous screen
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Profile updated successfully!')),
-    );
+    if (mounted) {
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Profile updated successfully!')));
+    }
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -133,7 +121,6 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
               _buildSkillsSection(),
               const SizedBox(height: 24),
               _buildGoalsSection(),
-
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.center,
@@ -147,18 +134,12 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 16),
                     ),
-                    child:
-                        _isLoading
-                            ? const CircularProgressIndicator(
-                              color: Colors.black,
-                            )
-                            : const Text(
-                              'Upload Profile',
-                              style: TextStyle(
-                                fontSize: 18,
-                                color: Colors.black,
-                              ),
-                            ),
+                    child: _isLoading
+                        ? const CircularProgressIndicator(color: Colors.black)
+                        : const Text(
+                            'Upload Profile',
+                            style: TextStyle(fontSize: 18, color: Colors.black),
+                          ),
                   ),
                 ],
               ),
@@ -221,49 +202,29 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Personal Information',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Personal Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             TextFormField(
               controller: _nameController,
-              decoration: const InputDecoration(
-                labelText: 'Full Name',
-                prefixIcon: Icon(Icons.person),
-              ),
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please enter your name';
-                }
-                return null;
-              },
+              decoration: const InputDecoration(labelText: 'Full Name', prefixIcon: Icon(Icons.person)),
+              validator: (value) => value == null || value.isEmpty ? 'Please enter your name' : null,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _emailController,
-              decoration: const InputDecoration(
-                labelText: 'Email',
-                prefixIcon: Icon(Icons.email),
-              ),
+              decoration: const InputDecoration(labelText: 'Email', prefixIcon: Icon(Icons.email)),
               readOnly: true,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _phoneController,
-              decoration: const InputDecoration(
-                labelText: 'Phone Number',
-                prefixIcon: Icon(Icons.phone),
-              ),
+              decoration: const InputDecoration(labelText: 'Phone Number', prefixIcon: Icon(Icons.phone)),
               keyboardType: TextInputType.phone,
             ),
             const SizedBox(height: 16),
             TextFormField(
               controller: _bioController,
-              decoration: const InputDecoration(
-                labelText: 'Bio/Introduction',
-                prefixIcon: Icon(Icons.info),
-              ),
+              decoration: const InputDecoration(labelText: 'Bio/Introduction', prefixIcon: Icon(Icons.info)),
               maxLines: 3,
             ),
           ],
@@ -281,35 +242,14 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Career Information',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Career Information', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 16),
             DropdownButtonFormField<String>(
               value: _selectedCareerLevel,
-              decoration: const InputDecoration(
-                labelText: 'Career Level',
-                prefixIcon: Icon(Icons.work),
-              ),
-              items:
-                  _careerLevels.map((String value) {
-                    return DropdownMenuItem<String>(
-                      value: value,
-                      child: Text(value),
-                    );
-                  }).toList(),
-              onChanged: (newValue) {
-                setState(() {
-                  _selectedCareerLevel = newValue;
-                });
-              },
-              validator: (value) {
-                if (value == null || value.isEmpty) {
-                  return 'Please select your career level';
-                }
-                return null;
-              },
+              decoration: const InputDecoration(labelText: 'Career Level', prefixIcon: Icon(Icons.work)),
+              items: _careerLevels.map((level) => DropdownMenuItem(value: level, child: Text(level))).toList(),
+              onChanged: (value) => setState(() => _selectedCareerLevel = value),
+              validator: (value) => value == null || value.isEmpty ? 'Please select your career level' : null,
             ),
           ],
         ),
@@ -326,22 +266,13 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Skills & Expertise',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Skills & Expertise', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            const Text(
-              'List your skills separated by commas',
-              style: TextStyle(color: Colors.grey),
-            ),
+            const Text('List your skills separated by commas', style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
             TextFormField(
               controller: _skillsController,
-              decoration: const InputDecoration(
-                labelText: 'Your Skills',
-                prefixIcon: Icon(Icons.star),
-              ),
+              decoration: const InputDecoration(labelText: 'Your Skills', prefixIcon: Icon(Icons.star)),
               maxLines: 2,
             ),
           ],
@@ -359,22 +290,13 @@ class _IndividualProfileScreenState extends State<IndividualProfileScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text(
-              'Career Goals',
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+            const Text('Career Goals', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
-            const Text(
-              'List your career goals separated by commas',
-              style: TextStyle(color: Colors.grey),
-            ),
+            const Text('List your career goals separated by commas', style: TextStyle(color: Colors.grey)),
             const SizedBox(height: 16),
             TextFormField(
               controller: _goalsController,
-              decoration: const InputDecoration(
-                labelText: 'Your Goals',
-                prefixIcon: Icon(Icons.flag),
-              ),
+              decoration: const InputDecoration(labelText: 'Your Goals', prefixIcon: Icon(Icons.flag)),
               maxLines: 3,
             ),
           ],

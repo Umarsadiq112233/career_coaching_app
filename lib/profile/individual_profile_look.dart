@@ -1,22 +1,17 @@
-// ignore_for_file: use_build_context_synchronously
-
+// Updated IndividualProfileScreenLook using Supabase
 import 'package:career_coaching/profile/individual_profile_screen.dart';
-import 'package:flutter/material.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:career_coaching/auth/login_screen.dart';
+import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class IndividualProfileScreenLook extends StatefulWidget {
   const IndividualProfileScreenLook({super.key});
 
   @override
-  State<IndividualProfileScreenLook> createState() =>
-      _IndividualProfileScreenLookState();
+  State<IndividualProfileScreenLook> createState() => _IndividualProfileScreenLookState();
 }
 
-class _IndividualProfileScreenLookState
-    extends State<IndividualProfileScreenLook> {
+class _IndividualProfileScreenLookState extends State<IndividualProfileScreenLook> {
   String? imageUrl;
   String name = '';
   String email = '';
@@ -33,39 +28,29 @@ class _IndividualProfileScreenLookState
   }
 
   Future<void> fetchIndividualData() async {
-    final userId = FirebaseAuth.instance.currentUser?.uid;
-    if (userId == null) return;
+    final user = Supabase.instance.client.auth.currentUser;
+    if (user == null) return;
 
     try {
-      final doc =
-          await FirebaseFirestore.instance
-              .collection('users')
-              .doc(userId)
-              .get();
-      if (doc.exists) {
-        final data = doc.data()!;
-        setState(() {
-          name = data['name'] ?? 'No Name';
-          email = data['email'] ?? 'No Email';
-          bio = data['bio'] ?? 'No Bio';
-          skills = List<String>.from(data['skills'] ?? []);
-          careerLevel = data['careerLevel'] ?? 'Not Specified';
-          goals = List<String>.from(data['goals'] ?? []);
-        });
+      final response = await Supabase.instance.client
+          .from('users')
+          .select()
+          .eq('id', user.id)
+          .single();
 
-        try {
-          final ref = FirebaseStorage.instance.ref('user_profiles/$userId.jpg');
-          imageUrl = await ref.getDownloadURL();
-        } catch (e) {
-          print('No profile image found: $e');
-        }
-      }
+      setState(() {
+        name = response['name'] ?? 'No Name';
+        email = response['email'] ?? 'No Email';
+        bio = response['bio'] ?? 'No Bio';
+        skills = List<String>.from(response['skills'] ?? []);
+        careerLevel = response['careerLevel'] ?? 'Not Specified';
+        goals = List<String>.from(response['goals'] ?? []);
+        imageUrl = response['image_url'] ?? '';
+      });
     } catch (e) {
       print('Error fetching individual data: $e');
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
@@ -77,53 +62,46 @@ class _IndividualProfileScreenLookState
         backgroundColor: const Color.fromARGB(255, 255, 193, 7),
         actions: [
           PopupMenuButton<String>(
-            itemBuilder:
-                (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Text('Edit Profile'),
-                  ),
-                  const PopupMenuItem(value: 'logout', child: Text('Logout')),
-                ],
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'edit', child: Text('Edit Profile')),
+              PopupMenuItem(value: 'logout', child: Text('Logout')),
+            ],
             onSelected: (value) async {
               if (value == 'logout') {
-                await FirebaseAuth.instance.signOut();
+                await Supabase.instance.client.auth.signOut();
                 Navigator.pushReplacement(
                   context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()),
+                  MaterialPageRoute(builder: (context) => const LoginScreen()),
                 );
               } else if (value == 'edit') {
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(
-                    builder: (context) => IndividualProfileScreen(),
-                  ),
+                  MaterialPageRoute(builder: (context) => const IndividualProfileScreen()),
                 );
-                fetchIndividualData(); // Refresh data after returning
+                fetchIndividualData();
               }
             },
           ),
         ],
       ),
-      body:
-          isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                onRefresh: fetchIndividualData,
-                child: SingleChildScrollView(
-                  child: Center(
-                    child: IndividualProfileCard(
-                      name: name,
-                      email: email,
-                      bio: bio,
-                      skills: skills,
-                      careerLevel: careerLevel,
-                      goals: goals,
-                      imageUrl: imageUrl ?? '',
-                    ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: fetchIndividualData,
+              child: SingleChildScrollView(
+                child: Center(
+                  child: IndividualProfileCard(
+                    name: name,
+                    email: email,
+                    bio: bio,
+                    skills: skills,
+                    careerLevel: careerLevel,
+                    goals: goals,
+                    imageUrl: imageUrl ?? '',
                   ),
                 ),
               ),
+            ),
     );
   }
 }
@@ -161,22 +139,14 @@ class IndividualProfileCard extends StatelessWidget {
           children: [
             CircleAvatar(
               radius: 60,
-              backgroundImage:
-                  imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
+              backgroundImage: imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
               backgroundColor: const Color.fromARGB(255, 255, 193, 7),
-              child:
-                  imageUrl.isEmpty
-                      ? const Icon(Icons.person, size: 60, color: Colors.black)
-                      : null,
+              child: imageUrl.isEmpty ? const Icon(Icons.person, size: 60, color: Colors.black) : null,
             ),
             const SizedBox(height: 20),
             Text(
               name,
-              style: const TextStyle(
-                fontSize: 24,
-                color: Colors.white,
-                fontWeight: FontWeight.bold,
-              ),
+              style: const TextStyle(fontSize: 24, color: Colors.white, fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 8),
             Row(
@@ -213,85 +183,52 @@ class IndividualProfileCard extends StatelessWidget {
             const SizedBox(height: 16),
             const Text(
               'Skills:',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                fontSize: 18,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18),
             ),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children:
-                  skills
-                      .map(
-                        (skill) => Chip(
-                          label: Text(skill),
-                          backgroundColor: const Color.fromARGB(
-                            255,
-                            255,
-                            193,
-                            7,
-                          ),
-                        ),
-                      )
-                      .toList(),
+              children: skills
+                  .map((skill) => Chip(
+                        label: Text(skill),
+                        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 16),
             const Text(
               'Goals:',
-              style: TextStyle(
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
-                fontSize: 18,
-              ),
+              style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 18),
             ),
             const SizedBox(height: 8),
             Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment
-                      .start, // Align children to the start (left)
-              children:
-                  goals
-                      .map(
-                        (goal) => Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 4),
-                          child: Row(
-                            mainAxisAlignment:
-                                MainAxisAlignment
-                                    .center, // Align items to the left
-                            crossAxisAlignment:
-                                CrossAxisAlignment
-                                    .center, // Align items to the top
-                            children: [
-                              const Icon(Icons.flag, color: Colors.white),
-                              const SizedBox(width: 8),
-                              Text(
-                                goal,
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 16,
-                                ),
-                              ),
-                            ],
-                          ),
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: goals
+                  .map((goal) => Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 4),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.flag, color: Colors.white),
+                            const SizedBox(width: 8),
+                            Text(
+                              goal,
+                              style: const TextStyle(color: Colors.white, fontSize: 16),
+                            ),
+                          ],
                         ),
-                      )
-                      .toList(),
+                      ))
+                  .toList(),
             ),
             const SizedBox(height: 20),
             ElevatedButton(
               onPressed: () => Navigator.pop(context),
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color.fromARGB(255, 255, 193, 7),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 12,
-                ),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               ),
               child: const Text(
                 'Back to Dashboard',

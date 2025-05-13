@@ -1,5 +1,6 @@
+// Updated SessionScreen using Supabase
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:intl/intl.dart';
 
 class SessionScreen extends StatefulWidget {
@@ -16,6 +17,8 @@ class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
   DateTime? _selectedTime;
   String? _selectedActivityType;
 
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   final List<String> _activityTypes = [
     'Work',
     'Study',
@@ -27,22 +30,24 @@ class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
   Future<void> _saveActivity() async {
     if (_formKey.currentState!.validate() && _selectedTime != null) {
       try {
-        await FirebaseFirestore.instance.collection('activities').add({
+        await _supabase.from('activities').insert({
           'title': _titleController.text.trim(),
           'description': _descriptionController.text.trim(),
-          'time': _selectedTime,
+          'time': _selectedTime!.toIso8601String(),
           'activityType': _selectedActivityType,
-          'createdAt': FieldValue.serverTimestamp(),
+          'createdAt': DateTime.now().toIso8601String(),
         });
 
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Activity saved successfully!')),
-        );
-        Navigator.pop(context);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Activity saved successfully!')),
+          );
+          Navigator.pop(context);
+        }
       } catch (e) {
-        ScaffoldMessenger.of(
-          context,
-        ).showSnackBar(SnackBar(content: Text('Error: $e')));
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error: $e')),
+        );
       }
     }
   }
@@ -77,7 +82,7 @@ class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
       appBar: AppBar(
         title: const Text('Add New Activity'),
         centerTitle: true,
-        backgroundColor: Color.fromARGB(255, 255, 193, 7),
+        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
         foregroundColor: Colors.black,
         elevation: 4,
       ),
@@ -129,21 +134,14 @@ class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
                       errorBorder: borderStyle,
                       focusedErrorBorder: borderStyle,
                     ),
-                    items:
-                        _activityTypes.map((type) {
-                          return DropdownMenuItem(
-                            value: type,
-                            child: Text(type),
-                          );
-                        }).toList(),
-                    onChanged:
-                        (value) =>
-                            setState(() => _selectedActivityType = value),
-                    validator:
-                        (value) =>
-                            value == null
-                                ? 'Please select an activity type'
-                                : null,
+                    items: _activityTypes.map((type) {
+                      return DropdownMenuItem(
+                        value: type,
+                        child: Text(type),
+                      );
+                    }).toList(),
+                    onChanged: (value) => setState(() => _selectedActivityType = value),
+                    validator: (value) => value == null ? 'Please select an activity type' : null,
                   ),
                   const SizedBox(height: 20),
 
@@ -159,9 +157,7 @@ class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
                       errorBorder: borderStyle,
                       focusedErrorBorder: borderStyle,
                     ),
-                    validator:
-                        (value) =>
-                            value!.isEmpty ? 'Please enter a title' : null,
+                    validator: (value) => value!.isEmpty ? 'Please enter a title' : null,
                   ),
                   const SizedBox(height: 20),
 
@@ -193,7 +189,7 @@ class _SheduleSetForUpcommingSessionState extends State<SessionScreen> {
                         style: TextStyle(fontSize: 18),
                       ),
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: Color.fromARGB(255, 255, 193, 7),
+                        backgroundColor: const Color.fromARGB(255, 255, 193, 7),
                         foregroundColor: Colors.black,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(12),

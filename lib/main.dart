@@ -1,18 +1,23 @@
 // ignore_for_file: avoid_print
 
-import 'package:career_coaching/auth/login_screen.dart';
-import 'package:career_coaching/auth/user_role.dart';
-import 'package:career_coaching/home/coach_dashboard.dart';
-import 'package:career_coaching/home/indiviual_dashboard.dart';
-import 'package:career_coaching/profile/coach_profile_screen.dart';
-import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
+
+import 'auth/login_screen.dart';
+import 'auth/user_role.dart';
+import 'home/coach_dashboard.dart';
+import 'home/indiviual_dashboard.dart';
+import 'profile/coach_profile_screen.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp();
+
+  await Supabase.initialize(
+    url: 'https://fevfaxnkgfrlcoyyktts.supabase.co',
+    anonKey:
+        'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZldmZheG5rZ2ZybGNveXlrdHRzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDcxNTY3NTcsImV4cCI6MjA2MjczMjc1N30.UOVTjohX_2j9FPSvtyPoyEKb9jzgAvzyySLHSxzcaHE',
+  );
+
   runApp(const MyApp());
 }
 
@@ -21,9 +26,9 @@ class MyApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return MaterialApp(
+    return const MaterialApp(
       debugShowCheckedModeBanner: false,
-      home: const SplashWrapper(),
+      home: SplashWrapper(),
     );
   }
 }
@@ -39,6 +44,8 @@ class _SplashWrapperState extends State<SplashWrapper> {
   bool _isLoading = true;
   late Widget _nextScreen;
 
+  final SupabaseClient _client = Supabase.instance.client;
+
   @override
   void initState() {
     super.initState();
@@ -46,46 +53,40 @@ class _SplashWrapperState extends State<SplashWrapper> {
   }
 
   Future<void> _checkUserFlow() async {
-    final user = FirebaseAuth.instance.currentUser;
+    final user = _client.auth.currentUser;
 
     if (user == null) {
-      // Not logged in → go to Login
       _nextScreen = const LoginScreen();
     } else {
       try {
-        // First check in 'users' collection for role selection
-        final userDoc =
-            await FirebaseFirestore.instance
-                .collection('users')
-                .doc(user.uid)
-                .get();
+        final response =
+            await _client
+                .from('users')
+                .select('role')
+                .eq('id', user.id)
+                .single();
 
-        if (!userDoc.exists || userDoc.data()?['role'] == null) {
-          // No role selected → go to Select Role screen
-          _nextScreen = UserRoleScreen();
-        } else {
-          // Role selected - check which role
-          final role = userDoc.data()?['role'];
+        final role = response['role'];
 
-          if (role == 'coach') {
-            // Check coach profile completion
-            final coachDoc =
-                await FirebaseFirestore.instance
-                    .collection('coaches')
-                    .doc(user.uid)
-                    .get();
+        if (role == null || role.toString().isEmpty) {
+          _nextScreen = const UserRoleScreen();
+        } else if (role == 'coach') {
+          final coach =
+              await _client
+                  .from('coaches')
+                  .select('name')
+                  .eq('id', user.id)
+                  .maybeSingle();
 
-            if (!coachDoc.exists || coachDoc.data()?['name'] == null) {
-              // Coach profile not complete
-              _nextScreen = const CoachProfileScreen();
-            } else {
-              // Coach profile complete → Dashboard
-              _nextScreen = CoachDashboardScreen();
-            }
-          } else if (role == 'individual') {
-            // Individual user → go to Individual Dashboard
-            _nextScreen = IndiviualDashboard();
+          if (coach == null || coach['name'] == null) {
+            _nextScreen = const CoachProfileScreen();
+          } else {
+            _nextScreen = const CoachDashboardScreen();
           }
+        } else if (role == 'individual') {
+          _nextScreen = const IndiviualDashboard();
+        } else {
+          _nextScreen = const LoginScreen(); // fallback
         }
       } catch (e) {
         print("Error checking user flow: $e");
@@ -100,10 +101,11 @@ class _SplashWrapperState extends State<SplashWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    if (_isLoading) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    } else {
-      return _nextScreen;
-    }
+    return Scaffold(
+      body:
+          _isLoading
+              ? const Center(child: CircularProgressIndicator())
+              : _nextScreen,
+    );
   }
 }

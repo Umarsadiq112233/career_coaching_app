@@ -1,9 +1,9 @@
-// ignore_for_file: sort_child_properties_last
+// ignore_for_file: sort_child_properties_last, avoid_print
 
 import 'package:career_coaching/auth/login_screen.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_svg/flutter_svg.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class Sigupscreen extends StatefulWidget {
   const Sigupscreen({super.key});
@@ -28,6 +28,46 @@ class _SigupscreenState extends State<Sigupscreen> {
     super.dispose();
   }
 
+  Future<void> _signupWithSupabase() async {
+    if (_formKey.currentState!.validate()) {
+      setState(() => _isLoading = true);
+
+      try {
+        final response = await Supabase.instance.client.auth.signUp(
+          email: _emailController.text.trim(),
+          password: _passwordController.text.trim(),
+        );
+
+        if (response.user != null) {
+          if (!mounted) return;
+
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text(
+                'Account created! Please check your email for verification.',
+              ),
+            ),
+          );
+
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(builder: (_) => const LoginScreen()),
+          );
+        }
+      } on AuthException catch (e) {
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(SnackBar(content: Text(e.message)));
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('An unexpected error occurred')),
+        );
+      } finally {
+        if (mounted) setState(() => _isLoading = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -39,12 +79,12 @@ class _SigupscreenState extends State<Sigupscreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                Text(
+                const Text(
                   "Logo",
                   style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 40),
-                Text(
+                const Text(
                   "Sign Up",
                   style: TextStyle(fontSize: 30, fontWeight: FontWeight.bold),
                 ),
@@ -54,7 +94,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                   decoration: const InputDecoration(
                     labelText: "Email",
                     border: OutlineInputBorder(),
-                    enabledBorder: const OutlineInputBorder(
+                    enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(
                         color: Color.fromARGB(255, 255, 193, 7),
                       ),
@@ -86,7 +126,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                   decoration: const InputDecoration(
                     labelText: "Password",
                     border: OutlineInputBorder(),
-                    enabledBorder: const OutlineInputBorder(
+                    enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(
                         color: Color.fromARGB(255, 255, 193, 7),
                       ),
@@ -96,6 +136,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                 ),
                 const SizedBox(height: 20),
                 TextFormField(
+                  controller: _confirmPasswordController,
                   validator: (value) {
                     if (value == null || value.isEmpty) {
                       return 'Please confirm your password';
@@ -104,11 +145,10 @@ class _SigupscreenState extends State<Sigupscreen> {
                     }
                     return null;
                   },
-                  controller: _confirmPasswordController,
                   decoration: const InputDecoration(
                     labelText: "Confirm Password",
                     border: OutlineInputBorder(),
-                    enabledBorder: const OutlineInputBorder(
+                    enabledBorder: OutlineInputBorder(
                       borderSide: BorderSide(
                         color: Color.fromARGB(255, 255, 193, 7),
                       ),
@@ -123,10 +163,10 @@ class _SigupscreenState extends State<Sigupscreen> {
                     const Text("Do you have an account? "),
                     GestureDetector(
                       onTap: () {
-                        Navigator.push(
+                        Navigator.pushReplacement(
                           context,
                           MaterialPageRoute(
-                            builder: (context) => const LoginScreen(),
+                            builder: (_) => const LoginScreen(),
                           ),
                         );
                       },
@@ -150,9 +190,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     GestureDetector(
-                      onTap: () {
-                        print("Google Icon Clicked");
-                      },
+                      onTap: () => print("Google Icon Clicked"),
                       child: SvgPicture.asset(
                         'assets/icons/google.svg',
                         height: 34,
@@ -161,9 +199,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                     ),
                     const SizedBox(width: 20),
                     GestureDetector(
-                      onTap: () {
-                        print("Facebook Icon Clicked");
-                      },
+                      onTap: () => print("Facebook Icon Clicked"),
                       child: SvgPicture.asset(
                         'assets/icons/facebook.svg',
                         height: 34,
@@ -172,9 +208,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                     ),
                     const SizedBox(width: 20),
                     GestureDetector(
-                      onTap: () {
-                        print("LinkedIn Icon Clicked");
-                      },
+                      onTap: () => print("LinkedIn Icon Clicked"),
                       child: SvgPicture.asset(
                         'assets/icons/linkdin.svg',
                         height: 34,
@@ -185,69 +219,7 @@ class _SigupscreenState extends State<Sigupscreen> {
                 ),
                 const SizedBox(height: 20),
                 ElevatedButton(
-                  onPressed: () async {
-                    if (_formKey.currentState!.validate()) {
-                      // Show loading indicator
-                      setState(() => _isLoading = true);
-
-                      try {
-                        // Create user with email and password
-                        UserCredential userCredential = await FirebaseAuth
-                            .instance
-                            .createUserWithEmailAndPassword(
-                              email: _emailController.text.trim(),
-                              password: _passwordController.text.trim(),
-                            );
-
-                        // If signup successful, navigate to next screen
-                        if (userCredential.user != null && mounted) {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const LoginScreen(),
-                            ),
-                          );
-                        }
-                      } on FirebaseAuthException catch (e) {
-                        // Handle errors
-                        String errorMessage;
-                        switch (e.code) {
-                          case 'email-already-in-use':
-                            errorMessage = 'This email is already registered.';
-                            break;
-                          case 'invalid-email':
-                            errorMessage =
-                                'Please enter a valid email address.';
-                            break;
-                          case 'weak-password':
-                            errorMessage =
-                                'Password should be at least 6 characters.';
-                            break;
-                          case 'operation-not-allowed':
-                            errorMessage =
-                                'Email/password accounts are not enabled.';
-                            break;
-                          default:
-                            errorMessage = 'Signup failed. Please try again.';
-                        }
-
-                        // Show error message (you can use a SnackBar or Text widget)
-                        ScaffoldMessenger.of(
-                          context,
-                        ).showSnackBar(SnackBar(content: Text(errorMessage)));
-                      } catch (e) {
-                        ScaffoldMessenger.of(context).showSnackBar(
-                          const SnackBar(
-                            content: Text('An unexpected error occurred'),
-                          ),
-                        );
-                      } finally {
-                        if (mounted) {
-                          setState(() => _isLoading = false);
-                        }
-                      }
-                    }
-                  },
+                  onPressed: _isLoading ? null : _signupWithSupabase,
                   child:
                       _isLoading
                           ? const SizedBox(

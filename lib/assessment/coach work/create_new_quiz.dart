@@ -1,5 +1,5 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CreateQuizScreen extends StatefulWidget {
   const CreateQuizScreen({super.key});
@@ -9,16 +9,12 @@ class CreateQuizScreen extends StatefulWidget {
 }
 
 class _CreateQuizScreenState extends State<CreateQuizScreen> {
+  final SupabaseClient _supabase = Supabase.instance.client;
   final titleController = TextEditingController();
   final descController = TextEditingController();
   final List<Map<String, dynamic>> questions = [];
   final questionController = TextEditingController();
-  final List<TextEditingController> optionControllers = [
-    TextEditingController(),
-    TextEditingController(),
-    TextEditingController(),
-    TextEditingController(),
-  ];
+  final List<TextEditingController> optionControllers = List.generate(4, (_) => TextEditingController());
   int correctAnswerIndex = 0;
 
   @override
@@ -67,10 +63,7 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Question ${index + 1}',
-                            style: const TextStyle(fontWeight: FontWeight.bold),
-                          ),
+                          Text('Question ${index + 1}', style: const TextStyle(fontWeight: FontWeight.bold)),
                           IconButton(
                             icon: const Icon(Icons.delete, color: Colors.red),
                             onPressed: () => removeQuestion(index),
@@ -86,10 +79,7 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
                             children: [
                               Icon(
                                 Icons.circle,
-                                color:
-                                    question['correctAnswer'] == option.key
-                                        ? Colors.green
-                                        : Colors.grey,
+                                color: question['correctAnswer'] == option.key ? Colors.green : Colors.grey,
                                 size: 12,
                               ),
                               const SizedBox(width: 8),
@@ -110,10 +100,7 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Add New Question',
-                      style: TextStyle(fontWeight: FontWeight.bold),
-                    ),
+                    const Text('Add New Question', style: TextStyle(fontWeight: FontWeight.bold)),
                     const SizedBox(height: 12),
                     TextField(
                       controller: questionController,
@@ -132,18 +119,13 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
                             Radio<int>(
                               value: index,
                               groupValue: correctAnswerIndex,
-                              onChanged: (value) {
-                                setState(() {
-                                  correctAnswerIndex = value!;
-                                });
-                              },
+                              onChanged: (value) => setState(() => correctAnswerIndex = value!),
                             ),
                             Expanded(
                               child: TextField(
                                 controller: optionControllers[index],
                                 decoration: InputDecoration(
-                                  hintText:
-                                      'Option ${String.fromCharCode(65 + index)}',
+                                  hintText: 'Option ${String.fromCharCode(65 + index)}',
                                   border: const OutlineInputBorder(),
                                 ),
                               ),
@@ -164,9 +146,7 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
             const SizedBox(height: 24),
             ElevatedButton(
               onPressed: questions.isNotEmpty ? createQuiz : null,
-              style: ElevatedButton.styleFrom(
-                minimumSize: const Size(double.infinity, 50),
-              ),
+              style: ElevatedButton.styleFrom(minimumSize: const Size(double.infinity, 50)),
               child: const Text("Create Quiz"),
             ),
           ],
@@ -176,11 +156,8 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
   }
 
   void addQuestion() {
-    if (questionController.text.isEmpty ||
-        optionControllers.any((c) => c.text.isEmpty)) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
+    if (questionController.text.isEmpty || optionControllers.any((c) => c.text.isEmpty)) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Please fill all fields')));
       return;
     }
 
@@ -199,9 +176,7 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
   }
 
   void removeQuestion(int index) {
-    setState(() {
-      questions.removeAt(index);
-    });
+    setState(() => questions.removeAt(index));
   }
 
   Future<void> createQuiz() async {
@@ -216,22 +191,22 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
     }
 
     try {
-      final docRef = await FirebaseFirestore.instance
-          .collection('quizzes')
-          .add({
-            'title': title,
-            'description': desc,
-            'questionCount': questions.length,
-            'status': 'New',
-            'progress': 0.0,
-            'createdAt': FieldValue.serverTimestamp(),
-          });
+      final response = await _supabase.from('quizzes').insert({
+        'title': title,
+        'description': desc,
+        'questionCount': questions.length,
+        'status': 'New',
+        'progress': 0.0,
+      }).select().single();
+
+      final quizId = response['id'];
 
       for (final question in questions) {
-        await docRef.collection('questions').add({
-          'questionText': question['questionText'],
+        await _supabase.from('quiz_questions').insert({
+          'quiz_id': quizId,
+          'question_text': question['questionText'],
           'options': question['options'],
-          'correctAnswer': question['correctAnswer'],
+          'correct_answer': question['correctAnswer'],
         });
       }
 
@@ -240,15 +215,12 @@ class _CreateQuizScreenState extends State<CreateQuizScreen> {
         'desc': '$desc (${questions.length} Questions)',
         'status': 'New',
         'progress': 0.0,
-        'firebaseId': docRef.id,
       };
 
       if (!mounted) return;
       Navigator.pop(context, newAssessment);
     } catch (e) {
-      ScaffoldMessenger.of(
-        context,
-      ).showSnackBar(SnackBar(content: Text('Error creating quiz: $e')));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error creating quiz: $e')));
     }
   }
 

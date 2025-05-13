@@ -1,8 +1,7 @@
 import 'package:career_coaching/profile/coach_profile_screen.dart';
 import 'package:career_coaching/profile/individual_profile_screen.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
 import 'package:flutter/material.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class UserRoleScreen extends StatefulWidget {
   const UserRoleScreen({super.key});
@@ -12,49 +11,48 @@ class UserRoleScreen extends StatefulWidget {
 }
 
 class _UserRoleScreenState extends State<UserRoleScreen> {
-  final User? _user = FirebaseAuth.instance.currentUser;
+  final _client = Supabase.instance.client;
   bool _isProcessing = false;
 
   Future<void> _handleRoleSelection(String role) async {
-    if (_user == null || _isProcessing) return;
+    final user = _client.auth.currentUser;
+    if (user == null || _isProcessing) return;
 
     setState(() => _isProcessing = true);
 
     try {
-      await _updateUserRole(role);
+      await _updateUserRole(user.id, role);
       if (!mounted) return;
       _navigateToRoleScreen(role);
     } catch (e) {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('Failed to select role. Please try again.')),
+        const SnackBar(
+          content: Text('Failed to select role. Please try again.'),
+        ),
       );
     } finally {
       if (mounted) setState(() => _isProcessing = false);
     }
   }
 
-  Future<void> _updateUserRole(String role) async {
-    final batch = FirebaseFirestore.instance.batch();
-    final timestamp = FieldValue.serverTimestamp();
+  Future<void> _updateUserRole(String userId, String role) async {
+    final now = DateTime.now().toIso8601String();
 
-    // Update users collection
-    batch.set(
-      FirebaseFirestore.instance.collection('users').doc(_user!.uid),
-      {'role': role, 'updatedAt': timestamp},
-      SetOptions(merge: true),
-    );
+    // Update role in users table
+    await _client
+        .from('users')
+        .update({'role': role, 'updated_at': now})
+        .eq('id', userId);
 
-    // For coaches, update coaches collection
+    // If role is coach, upsert into coaches table
     if (role == 'coach') {
-      batch.set(
-        FirebaseFirestore.instance.collection('coaches').doc(_user.uid),
-        {'role': role, 'createdAt': timestamp},
-        SetOptions(merge: true),
-      );
+      await _client.from('coaches').upsert({
+        'id': userId,
+        'role': role,
+        'created_at': now,
+      });
     }
-
-    await batch.commit();
   }
 
   void _navigateToRoleScreen(String role) {
@@ -64,8 +62,8 @@ class _UserRoleScreenState extends State<UserRoleScreen> {
         builder:
             (_) =>
                 role == 'individual'
-                    ? IndividualProfileScreen()
-                    : CoachProfileScreen(),
+                    ? const IndividualProfileScreen()
+                    : const CoachProfileScreen(),
       ),
     );
   }

@@ -1,7 +1,7 @@
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+// Updated IndividualChatScreen using Supabase
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class IndividualChatScreen extends StatefulWidget {
   final String chatId;
@@ -23,8 +23,7 @@ class IndividualChatScreen extends StatefulWidget {
 
 class _IndividualChatScreenState extends State<IndividualChatScreen> {
   final TextEditingController _messageController = TextEditingController();
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _firestore = FirebaseFirestore.instance;
+  final SupabaseClient _supabase = Supabase.instance.client;
   final ScrollController _scrollController = ScrollController();
 
   @override
@@ -33,45 +32,37 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
     _markMessagesAsRead();
   }
 
-  void _markMessagesAsRead() async {
-    final messages =
-        await _firestore
-            .collection('chats')
-            .doc(widget.chatId)
-            .collection('messages')
-            .where('senderId', isEqualTo: widget.otherUserId)
-            .where('read', isEqualTo: false)
-            .get();
+  Future<void> _markMessagesAsRead() async {
+    final response = await _supabase
+        .from('messages')
+        .select('id')
+        .eq('chat_id', widget.chatId)
+        .eq('sender_id', widget.otherUserId)
+        .eq('read', false);
 
-    final batch = _firestore.batch();
-    for (final doc in messages.docs) {
-      batch.update(doc.reference, {'read': true});
+    for (var msg in response) {
+      await _supabase.from('messages').update({'read': true}).eq('id', msg['id']);
     }
-    await batch.commit();
   }
 
   Future<void> sendMessage() async {
+    final userId = _supabase.auth.currentUser?.id;
     final text = _messageController.text.trim();
-    if (text.isEmpty) return;
+    if (userId == null || text.isEmpty) return;
 
-    // Add message to Firestore
-    await _firestore
-        .collection('chats')
-        .doc(widget.chatId)
-        .collection('messages')
-        .add({
-          'senderId': _auth.currentUser!.uid,
-          'text': text,
-          'timestamp': FieldValue.serverTimestamp(),
-          'type': 'text',
-          'read': false,
-        });
-
-    // Update chat metadata
-    await _firestore.collection('chats').doc(widget.chatId).update({
-      'lastMessage': text,
-      'lastUpdated': FieldValue.serverTimestamp(),
+    await _supabase.from('messages').insert({
+      'chat_id': widget.chatId,
+      'sender_id': userId,
+      'text': text,
+      'timestamp': DateTime.now().toIso8601String(),
+      'type': 'text',
+      'read': false,
     });
+
+    await _supabase.from('chats').update({
+      'last_message': text,
+      'last_updated': DateTime.now().toIso8601String(),
+    }).eq('id', widget.chatId);
 
     _messageController.clear();
     _scrollToBottom();
@@ -91,7 +82,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUserId = _auth.currentUser!.uid;
+    final userId = _supabase.auth.currentUser?.id;
     final coachBubbleColor = const Color.fromARGB(255, 255, 193, 7);
     final individualBubbleColor = Colors.grey[200];
 
@@ -103,20 +94,22 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
       body: Column(
         children: [
           Expanded(
-            child: StreamBuilder<QuerySnapshot>(
-              stream:
-                  _firestore
-                      .collection('chats')
-                      .doc(widget.chatId)
-                      .collection('messages')
-                      .orderBy('timestamp', descending: false)
-                      .snapshots(),
+            child: StreamBuilder<List<Map<String, dynamic>>>(
+              stream: _supabase
+                  .from('messages')
+                  .stream(primaryKey: ['id'])
+                  .eq('chat_id', widget.chatId)
+                  .order('timestamp', ascending: true),
               builder: (context, snapshot) {
-                if (!snapshot.hasData) {
+                final messages = snapshot.data;
+
+                if (snapshot.connectionState == ConnectionState.waiting) {
                   return const Center(child: CircularProgressIndicator());
                 }
 
-                final messages = snapshot.data!.docs;
+                if (messages == null || messages.isEmpty) {
+                  return const Center(child: Text('No messages yet.'));
+                }
 
                 WidgetsBinding.instance.addPostFrameCallback((_) {
                   _scrollToBottom();
@@ -128,16 +121,12 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
                   itemCount: messages.length,
                   itemBuilder: (context, index) {
                     final message = messages[index];
-                    final isMe = message['senderId'] == currentUserId;
-                    final timestamp = message['timestamp'] as Timestamp?;
-                    final timeString =
-                        timestamp != null
-                            ? DateFormat('h:mm a').format(timestamp.toDate())
-                            : '';
+                    final isMe = message['sender_id'] == userId;
+                    final time = DateTime.tryParse(message['timestamp'] ?? '') ?? DateTime.now();
+                    final timeString = DateFormat('h:mm a').format(time);
 
                     return Align(
-                      alignment:
-                          isMe ? Alignment.centerRight : Alignment.centerLeft,
+                      alignment: isMe ? Alignment.centerRight : Alignment.centerLeft,
                       child: Container(
                         margin: const EdgeInsets.symmetric(vertical: 5),
                         constraints: BoxConstraints(
@@ -145,19 +134,14 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
                         ),
                         padding: const EdgeInsets.all(12),
                         decoration: BoxDecoration(
-                          color:
-                              isMe
-                                  ? (widget.isCoach
-                                      ? coachBubbleColor
-                                      : Colors.blue)
-                                  : individualBubbleColor,
+                          color: isMe
+                              ? (widget.isCoach ? coachBubbleColor : Colors.blue)
+                              : individualBubbleColor,
                           borderRadius: BorderRadius.only(
                             topLeft: const Radius.circular(12),
                             topRight: const Radius.circular(12),
-                            bottomLeft:
-                                isMe ? const Radius.circular(12) : Radius.zero,
-                            bottomRight:
-                                isMe ? Radius.zero : const Radius.circular(12),
+                            bottomLeft: isMe ? const Radius.circular(12) : Radius.zero,
+                            bottomRight: isMe ? Radius.zero : const Radius.circular(12),
                           ),
                         ),
                         child: Column(
@@ -199,9 +183,7 @@ class _IndividualChatScreenState extends State<IndividualChatScreen> {
                       border: OutlineInputBorder(
                         borderRadius: BorderRadius.circular(20),
                       ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                      ),
+                      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
                     ),
                     onSubmitted: (_) => sendMessage(),
                   ),

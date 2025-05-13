@@ -3,12 +3,42 @@ import 'package:career_coaching/message/coach_chat_message.dart';
 import 'package:career_coaching/profile/coach_profile_look.dart';
 import 'package:career_coaching/session/session_screen.dart';
 import 'package:career_coaching/session/view_all_session.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
-class CoachDashboardScreen extends StatelessWidget {
+class CoachDashboardScreen extends StatefulWidget {
   const CoachDashboardScreen({super.key});
+
+  @override
+  State<CoachDashboardScreen> createState() => _CoachDashboardScreenState();
+}
+
+class _CoachDashboardScreenState extends State<CoachDashboardScreen> {
+  final SupabaseClient supabase = Supabase.instance.client;
+  List<Map<String, dynamic>> upcomingSessions = [];
+  bool isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    fetchUpcomingSessions();
+  }
+
+  Future<void> fetchUpcomingSessions() async {
+    final now = DateTime.now().toIso8601String();
+    final response = await supabase
+        .from('activities')
+        .select()
+        .gte('time', now)
+        .order('time', ascending: true)
+        .limit(4);
+
+    setState(() {
+      upcomingSessions = List<Map<String, dynamic>>.from(response);
+      isLoading = false;
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -67,87 +97,63 @@ class CoachDashboardScreen extends StatelessWidget {
   }
 
   Widget _buildSummaryCards() {
-    final upcomingSessionsStream =
-        FirebaseFirestore.instance
-            .collection('activities')
-            .where('time', isGreaterThan: Timestamp.now())
-            .snapshots();
-
-    return StreamBuilder<QuerySnapshot>(
-      stream: upcomingSessionsStream,
-      builder: (context, snapshot) {
-        int upcomingCount = 0;
-        String nextSessionText = 'No upcoming';
-        DateTime? nextSessionDate;
-
-        if (snapshot.hasData) {
-          upcomingCount = snapshot.data!.docs.length;
-
-          if (upcomingCount > 0) {
-            final sessionDates =
-                snapshot.data!.docs.map((doc) {
-                  final data = doc.data() as Map<String, dynamic>;
-                  final timestamp = data['time'] as Timestamp;
-                  return timestamp.toDate();
-                }).toList();
-
-            sessionDates.sort((a, b) => a.compareTo(b)); // sort dates
-            nextSessionDate = sessionDates.first;
-            final now = DateTime.now();
-            final difference = nextSessionDate.difference(now);
-
-            if (difference.inDays > 0) {
-              nextSessionText = 'Next in ${difference.inDays} days';
-            } else if (difference.inHours > 0) {
-              nextSessionText = 'Next in ${difference.inHours} hours';
-            } else {
-              nextSessionText = 'Starting soon';
-            }
-          }
-        }
-
-        final cards = [
-          {
-            'title': 'Total Learners',
-            'value': '120',
-            'icon': Icons.people,
-            'color': Colors.blue,
-            'trend': '↑ 12%',
-          },
-          {
-            'title': 'Upcoming Sessions',
-            'value': '$upcomingCount',
-            'icon': Icons.calendar_today,
-            'color': Colors.green,
-            'trend': nextSessionText,
-          },
-          {
-            'title': 'Skill Requests',
-            'value': '5',
-            'icon': Icons.lightbulb_outline,
-            'color': Colors.orange,
-            'trend': '3 new',
-          },
-          {
-            'title': 'Pending Assessments',
-            'value': '12',
-            'icon': Icons.assignment,
-            'color': Colors.purple,
-            'trend': '3 overdue',
-          },
-        ];
-
-        return GridView.count(
-          shrinkWrap: true,
-          crossAxisCount: 2,
-          physics: const NeverScrollableScrollPhysics(),
-          childAspectRatio: 0.8,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-          children: cards.map((c) => _buildSummaryCard(c)).toList(),
-        );
+    final cards = [
+      {
+        'title': 'Total Learners',
+        'value': '120',
+        'icon': Icons.people,
+        'color': Colors.blue,
+        'trend': '↑ 12%',
       },
+      {
+        'title': 'Upcoming Sessions',
+        'value': '${upcomingSessions.length}',
+        'icon': Icons.calendar_today,
+        'color': Colors.green,
+        'trend': upcomingSessions.isNotEmpty
+            ? 'Next in ${_getNextSessionText()}'
+            : 'No upcoming',
+      },
+      {
+        'title': 'Skill Requests',
+        'value': '5',
+        'icon': Icons.lightbulb_outline,
+        'color': Colors.orange,
+        'trend': '3 new',
+      },
+      {
+        'title': 'Pending Assessments',
+        'value': '12',
+        'icon': Icons.assignment,
+        'color': Colors.purple,
+        'trend': '3 overdue',
+      },
+    ];
+
+    return GridView.count(
+      shrinkWrap: true,
+      crossAxisCount: 2,
+      physics: const NeverScrollableScrollPhysics(),
+      childAspectRatio: 0.8,
+      crossAxisSpacing: 16,
+      mainAxisSpacing: 16,
+      children: cards.map((c) => _buildSummaryCard(c)).toList(),
     );
+  }
+
+  String _getNextSessionText() {
+    if (upcomingSessions.isEmpty) return '';
+    final nextSession = DateTime.parse(upcomingSessions.first['time']);
+    final now = DateTime.now();
+    final difference = nextSession.difference(now);
+
+    if (difference.inDays > 0) {
+      return '${difference.inDays} days';
+    } else if (difference.inHours > 0) {
+      return '${difference.inHours} hours';
+    } else {
+      return 'Starting soon';
+    }
   }
 
   Widget _buildSummaryCard(Map<String, dynamic> card) {
@@ -185,143 +191,129 @@ class CoachDashboardScreen extends StatelessWidget {
   }
 
   Widget _buildUpcomingSessions(BuildContext context) {
-    return StreamBuilder<QuerySnapshot>(
-      stream:
-          FirebaseFirestore.instance
-              .collection('activities')
-              .orderBy('time', descending: false) // Oldest first
-              .limit(4)
-              .snapshots(),
-      builder: (context, snapshot) {
-        if (snapshot.connectionState == ConnectionState.waiting) {
-          return const Center(child: CircularProgressIndicator());
-        }
+    if (isLoading) {
+      return const Center(child: CircularProgressIndicator());
+    }
 
-        if (!snapshot.hasData || snapshot.data!.docs.isEmpty) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              const Text(
-                'Upcoming Sessions',
-                style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
-              ),
-              const SizedBox(height: 12),
-              Card(
-                elevation: 4,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Column(
-                    children: [
-                      const Text('No sessions found'),
-                      const SizedBox(height: 12),
-                      ElevatedButton(
-                        onPressed: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => SessionScreen(),
-                            ),
-                          );
-                        },
-                        child: const Text('Add New Session'),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ],
-          );
-        }
-
-        return Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text(
-              'Upcoming Sessions',
-              style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+    if (upcomingSessions.isEmpty) {
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Upcoming Sessions',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Card(
+            elevation: 4,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
             ),
-            const SizedBox(height: 12),
-            Card(
-              elevation: 4,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.all(16),
-                child: Column(
-                  children: [
-                    ...snapshot.data!.docs.map((doc) {
-                      final data = doc.data() as Map<String, dynamic>;
-                      final time = (data['time'] as Timestamp).toDate();
-
-                      return Column(
-                        children: [
-                          ListTile(
-                            leading: CircleAvatar(
-                              backgroundColor: _getActivityColor(
-                                data['activityType'],
-                              ),
-                              child: Icon(
-                                _getActivityIcon(data['activityType']),
-                                color: Colors.white,
-                              ),
-                            ),
-                            title: Text(data['title'] ?? 'No Title'),
-                            subtitle: Text(
-                              '${DateFormat('MMM dd, yyyy - hh:mm a').format(time)}\n'
-                              '${data['description'] ?? ''}',
-                            ),
-                            trailing: IconButton(
-                              icon: const Icon(Icons.more_vert),
-                              onPressed: () {},
-                            ),
-                          ),
-                          if (doc != snapshot.data!.docs.last) const Divider(),
-                        ],
+            child: Padding(
+              padding: const EdgeInsets.all(16),
+              child: Column(
+                children: [
+                  const Text('No sessions found'),
+                  const SizedBox(height: 12),
+                  ElevatedButton(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => SessionScreen(),
+                        ),
                       );
-                    }),
-                    const SizedBox(height: 12),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => SessionScreen(),
-                              ),
-                            );
-                          },
-                          child: const Text('Add New Schedule'),
+                    },
+                    child: const Text('Add New Session'),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
+      );
+    }
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          'Upcoming Sessions',
+          style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+        ),
+        const SizedBox(height: 12),
+        Card(
+          elevation: 4,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(
+              children: [
+                ...upcomingSessions.map((session) {
+                  final time = DateTime.parse(session['time']);
+                  return Column(
+                    children: [
+                      ListTile(
+                        leading: CircleAvatar(
+                          backgroundColor:
+                              _getActivityColor(session['activityType']),
+                          child: Icon(
+                            _getActivityIcon(session['activityType']),
+                            color: Colors.white,
+                          ),
                         ),
-                        ElevatedButton(
-                          onPressed: () {
-                            Navigator.push(
-                              context,
-                              MaterialPageRoute(
-                                builder: (context) => ActivityListPage(),
-                              ),
-                            );
-                          },
-                          child: const Text('View All'),
+                        title: Text(session['title'] ?? 'No Title'),
+                        subtitle: Text(
+                          '${DateFormat('MMM dd, yyyy - hh:mm a').format(time)}\n'
+                          '${session['description'] ?? ''}',
                         ),
-                      ],
+                        trailing: IconButton(
+                          icon: const Icon(Icons.more_vert),
+                          onPressed: () {},
+                        ),
+                      ),
+                      if (session != upcomingSessions.last) const Divider(),
+                    ],
+                  );
+                }),
+                const SizedBox(height: 12),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => SessionScreen(),
+                          ),
+                        );
+                      },
+                      child: const Text('Add New Schedule'),
+                    ),
+                    ElevatedButton(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (context) => ActivityListPage(),
+                          ),
+                        );
+                      },
+                      child: const Text('View All'),
                     ),
                   ],
                 ),
-              ),
+              ],
             ),
-          ],
-        );
-      },
+          ),
+        ),
+      ],
     );
   }
 
-  // Helper methods for activity styling
   Color _getActivityColor(String? activityType) {
     switch (activityType) {
       case 'Work':
@@ -485,89 +477,33 @@ class CoachDashboardScreen extends StatelessWidget {
               MaterialPageRoute(builder: (_) => SessionScreen()),
             );
             break;
-
+          case 3:
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => CoachChatScreen(
+                  chatId: 'sampleChatId',
+                  learnerId: 'sampleLearnerId',
+                  learnerName: 'Sample Learner',
+                ),
+              ),
+            );
+            break;
           case 4:
             Navigator.push(
               context,
               MaterialPageRoute(builder: (_) => const CoachProfileScreenLook()),
             );
             break;
-          case 3:
-            Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder:
-                    (_) => CoachChatScreen(
-                      chatId: 'sampleChatId',
-                      learnerId: 'sampleLearnerId',
-                      learnerName: 'Sample Learner',
-                    ),
-              ),
-            );
-            break;
         }
       },
       items: const [
         BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.assignment),
-          label: 'Assessments',
-        ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.calendar_today),
-          label: 'Sessions',
-        ),
+        BottomNavigationBarItem(icon: Icon(Icons.assignment), label: 'Assessments'),
+        BottomNavigationBarItem(icon: Icon(Icons.calendar_today), label: 'Sessions'),
         BottomNavigationBarItem(icon: Icon(Icons.chat), label: 'Chat'),
         BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
       ],
-    );
-  }
-}
-
-class SessionListItem extends StatelessWidget {
-  final DocumentSnapshot doc;
-
-  const SessionListItem({super.key, required this.doc});
-
-  @override
-  Widget build(BuildContext context) {
-    final data = doc.data() as Map<String, dynamic>;
-    final time = (data['time'] as Timestamp).toDate();
-
-    return ListTile(
-      leading: CircleAvatar(
-        backgroundColor:
-            data['activityType'] == '1-on-1'
-                ? Colors.blue[100]
-                : Colors.green[100],
-        child: Icon(
-          data['activityType'] == '1-on-1' ? Icons.person : Icons.people,
-          color: Colors.black,
-        ),
-      ),
-      title: Text(data['title'] ?? 'No Title'),
-      subtitle: Text(DateFormat('MMM dd, yyyy - hh:mm a').format(time)),
-      trailing: IconButton(
-        icon: const Icon(Icons.more_vert),
-        onPressed: () => _showOptions(context),
-      ),
-    );
-  }
-
-  void _showOptions(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      builder:
-          (_) => Column(
-            mainAxisSize: MainAxisSize.min,
-            children: const [
-              ListTile(leading: Icon(Icons.edit), title: Text('Edit Session')),
-              ListTile(
-                leading: Icon(Icons.delete),
-                title: Text('Cancel Session'),
-              ),
-            ],
-          ),
     );
   }
 }

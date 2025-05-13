@@ -1,9 +1,8 @@
+// Updated CoachProfileScreenLook using Supabase
 import 'package:career_coaching/auth/login_screen.dart';
 import 'package:career_coaching/profile/coach_profile_screen.dart';
 import 'package:flutter/material.dart';
-import 'package:firebase_storage/firebase_storage.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:firebase_auth/firebase_auth.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class CoachProfileScreenLook extends StatefulWidget {
   const CoachProfileScreenLook({super.key});
@@ -13,6 +12,8 @@ class CoachProfileScreenLook extends StatefulWidget {
 }
 
 class _CoachProfileScreenLookState extends State<CoachProfileScreenLook> {
+  final SupabaseClient _supabase = Supabase.instance.client;
+
   String? imageUrl;
   String name = '';
   String email = '';
@@ -31,73 +32,51 @@ class _CoachProfileScreenLookState extends State<CoachProfileScreenLook> {
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    // Refresh data when returning from edit screen
     fetchCoachData();
   }
 
   Future<void> fetchCoachData() async {
+    final user = _supabase.auth.currentUser;
+    if (user == null) return;
+
     try {
-      final userId = FirebaseAuth.instance.currentUser?.uid;
-      if (userId == null) return;
+      final response = await _supabase
+          .from('coaches')
+          .select()
+          .eq('id', user.id)
+          .single();
 
-      final doc =
-          await FirebaseFirestore.instance
-              .collection('coaches')
-              .doc(userId)
-              .get();
-
-      if (doc.exists) {
-        final data = doc.data()!;
-        setState(() {
-          name = data['name'] ?? 'No Name';
-          email = data['email'] ?? 'No Email';
-          bio = data['bio'] ?? 'No Bio';
-          skills = List<String>.from(data['skills'] ?? []);
-          experience = data['experience'] ?? '0';
-          availability = Map<String, bool>.from(
-            data['availability'] ??
-                {
-                  'Monday': false,
-                  'Tuesday': false,
-                  'Wednesday': false,
-                  'Thursday': false,
-                  'Friday': false,
-                  'Saturday': false,
-                  'Sunday': false,
-                },
-          );
+      setState(() {
+        name = response['name'] ?? 'No Name';
+        email = response['email'] ?? 'No Email';
+        bio = response['bio'] ?? 'No Bio';
+        skills = List<String>.from(response['skills'] ?? []);
+        experience = response['experience'] ?? '0';
+        availability = Map<String, bool>.from(response['availability'] ?? {
+          'Monday': false,
+          'Tuesday': false,
+          'Wednesday': false,
+          'Thursday': false,
+          'Friday': false,
+          'Saturday': false,
+          'Sunday': false,
         });
-
-        try {
-          final ref = FirebaseStorage.instance.ref(
-            'coach_profiles/$userId.jpg',
-          );
-          final url = await ref.getDownloadURL();
-          setState(() {
-            imageUrl = url;
-          });
-        } catch (e) {
-          print('No profile image found: $e');
-        }
-      }
+        imageUrl = response['image_url'] ?? '';
+      });
     } catch (e) {
       print('Error fetching coach data: $e');
     } finally {
-      setState(() {
-        isLoading = false;
-      });
+      setState(() => isLoading = false);
     }
   }
 
   String _formatAvailability() {
-    final availableDays =
-        availability.entries
-            .where((entry) => entry.value)
-            .map((entry) => entry.key)
-            .toList();
+    final availableDays = availability.entries
+        .where((entry) => entry.value)
+        .map((entry) => entry.key)
+        .toList();
 
-    if (availableDays.isEmpty) return 'Not Available';
-    return availableDays.join(', ');
+    return availableDays.isEmpty ? 'Not Available' : availableDays.join(', ');
   }
 
   @override
@@ -108,61 +87,56 @@ class _CoachProfileScreenLookState extends State<CoachProfileScreenLook> {
         backgroundColor: const Color.fromARGB(255, 255, 193, 7),
         actions: [
           PopupMenuButton(
-            itemBuilder:
-                (context) => [
-                  const PopupMenuItem(
-                    value: 'edit',
-                    child: Text('Edit Profile'),
-                  ),
-                  const PopupMenuItem(value: 'logout', child: Text('Logout')),
-                ],
+            itemBuilder: (context) => const [
+              PopupMenuItem(value: 'edit', child: Text('Edit Profile')),
+              PopupMenuItem(value: 'logout', child: Text('Logout')),
+            ],
             onSelected: (value) async {
               if (value == 'logout') {
-                await FirebaseAuth.instance.signOut();
+                await _supabase.auth.signOut();
+                // ignore: use_build_context_synchronously
                 Navigator.pushReplacement(
-                  // ignore: use_build_context_synchronously
                   context,
-                  MaterialPageRoute(builder: (context) => LoginScreen()),
+                  MaterialPageRoute(builder: (_) => const LoginScreen()),
                 );
               } else if (value == 'edit') {
                 await Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (context) => CoachProfileScreen()),
+                  MaterialPageRoute(builder: (_) => const CoachProfileScreen()),
                 );
-                fetchCoachData(); // Refresh data after returning
+                fetchCoachData();
               }
             },
           ),
         ],
       ),
-      body:
-          isLoading
-              ? const Center(child: CircularProgressIndicator())
-              : RefreshIndicator(
-                onRefresh: fetchCoachData,
-                child: SingleChildScrollView(
-                  child: Center(
-                    child: CoachProfileCard(
-                      name: name,
-                      email: email,
-                      bio: bio,
-                      skills: skills,
-                      experience: experience,
-                      availability: _formatAvailability(),
-                      imageUrl: imageUrl ?? '',
-                      onEditPressed: () async {
-                        await Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (context) => CoachProfileScreen(),
-                          ),
-                        );
-                        fetchCoachData(); // Refresh data after returning
-                      },
-                    ),
+      body: isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : RefreshIndicator(
+              onRefresh: fetchCoachData,
+              child: SingleChildScrollView(
+                child: Center(
+                  child: CoachProfileCard(
+                    name: name,
+                    email: email,
+                    bio: bio,
+                    skills: skills,
+                    experience: experience,
+                    availability: _formatAvailability(),
+                    imageUrl: imageUrl ?? '',
+                    onEditPressed: () async {
+                      await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const CoachProfileScreen(),
+                        ),
+                      );
+                      fetchCoachData();
+                    },
                   ),
                 ),
               ),
+            ),
     );
   }
 }
@@ -206,10 +180,9 @@ class CoachProfileCard extends StatelessWidget {
               backgroundImage:
                   imageUrl.isNotEmpty ? NetworkImage(imageUrl) : null,
               backgroundColor: const Color.fromARGB(255, 255, 193, 7),
-              child:
-                  imageUrl.isEmpty
-                      ? const Icon(Icons.person, size: 60, color: Colors.black)
-                      : null,
+              child: imageUrl.isEmpty
+                  ? const Icon(Icons.person, size: 60, color: Colors.black)
+                  : null,
             ),
             const SizedBox(height: 20),
             Text(
@@ -268,21 +241,15 @@ class CoachProfileCard extends StatelessWidget {
             Wrap(
               spacing: 8,
               runSpacing: 8,
-              children:
-                  skills
-                      .map(
-                        (skill) => Chip(
-                          label: Text(skill),
-                          backgroundColor: const Color.fromARGB(
-                            255,
-                            255,
-                            193,
-                            7,
-                          ),
-                          side: const BorderSide(color: Colors.white, width: 1),
-                        ),
-                      )
-                      .toList(),
+              children: skills
+                  .map(
+                    (skill) => Chip(
+                      label: Text(skill),
+                      backgroundColor: const Color.fromARGB(255, 255, 193, 7),
+                      side: const BorderSide(color: Colors.white, width: 1),
+                    ),
+                  )
+                  .toList(),
             ),
             const SizedBox(height: 16),
             const Text(
@@ -307,10 +274,7 @@ class CoachProfileCard extends StatelessWidget {
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 32,
-                  vertical: 12,
-                ),
+                padding: const EdgeInsets.symmetric(horizontal: 32, vertical: 12),
               ),
               child: const Text(
                 'Back to Dashboard',
